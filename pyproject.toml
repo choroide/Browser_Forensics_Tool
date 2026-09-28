@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "browser-forensics"
+version = "1.0.0"
+description = "Cross-platform CLI browser forensics tool for extracting and analyzing browser artifacts"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "BrowserForensics Team"}]
+readme = "README.md"
+dependencies = [
+    "jinja2>=3.1",
+    "pycryptodome>=3.19",
+    "pyasn1>=0.5",
+]
+
+[project.optional-dependencies]
+windows = ["pywin32>=306"]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+browser-forensics = "browserforensics.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["browserforensics*"]
+
+[tool.setuptools.package-data]
+browserforensics = ["report/templates/**/*", "report/templates/*"]

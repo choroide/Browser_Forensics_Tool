@@ -1,0 +1,1492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BrowserForensics Report — {{ report.machine_name }}</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+    <style>
+        /* ═══════════════════ CSS VARIABLES / THEMES ═══════════════════ */
+        :root {
+            --bg: #0f0e17; --surface: #1a1a2e; --card: #16213e;
+            --text: #e6e6e6; --text-muted: #8892b0; --accent: #0f3460;
+            --primary: #1a73e8; --danger: #e94560; --success: #2ecc71;
+            --warning: #e9c46a; --info: #00b4d8;
+            --border: #2c3e50; --hover: #1f2e4d; --input-bg: #0f0e17;
+            --sidebar-w: 260px; --header-h: 56px;
+            --shadow: 0 4px 24px rgba(0,0,0,.35);
+        }
+        [data-theme="light"] {
+            --bg: #f0f2f5; --surface: #ffffff; --card: #ffffff;
+            --text: #1a1a2e; --text-muted: #6b7280; --accent: #e8edf3;
+            --primary: #1a73e8; --danger: #d93025; --success: #188038;
+            --warning: #ea8600; --info: #0077b6;
+            --border: #d1d5db; --hover: #f3f4f6; --input-bg: #ffffff;
+            --shadow: 0 4px 24px rgba(0,0,0,.08);
+        }
+
+        /* ═══════════════════ RESET & BASE ═══════════════════ */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg); color: var(--text);
+            line-height: 1.6; overflow-x: hidden;
+            transition: background .3s, color .3s;
+        }
+        a { color: var(--primary); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        ::selection { background: var(--primary); color: #fff; }
+
+        /* ═══════════════════ DISCLAIMER BANNER ═══════════════════ */
+        .disclaimer {
+            background: linear-gradient(135deg, var(--danger), #c0392b);
+            color: #fff; text-align: center; padding: 8px 16px;
+            font-size: .85em; font-weight: 600; letter-spacing: .3px;
+            position: sticky; top: 0; z-index: 1000;
+        }
+
+        /* ═══════════════════ SIDEBAR NAVIGATION ═══════════════════ */
+        .sidebar {
+            position: fixed; top: var(--header-h); left: 0;
+            width: var(--sidebar-w); height: calc(100vh - var(--header-h));
+            background: var(--surface); border-right: 1px solid var(--border);
+            overflow-y: auto; z-index: 900; padding: 16px 0;
+            transition: transform .3s ease;
+        }
+        .sidebar.collapsed { transform: translateX(calc(-1 * var(--sidebar-w))); }
+        .sidebar-toggle {
+            position: fixed; top: calc(var(--header-h) + 8px); left: 8px;
+            z-index: 950; background: var(--primary); color: #fff;
+            border: none; border-radius: 6px; width: 36px; height: 36px;
+            cursor: pointer; font-size: 1.2em; display: none;
+        }
+        .sidebar.collapsed ~ .sidebar-toggle { display: flex; align-items: center; justify-content: center; }
+        .sidebar-nav { list-style: none; }
+        .sidebar-nav li a {
+            display: flex; align-items: center; gap: 10px;
+            padding: 10px 20px; color: var(--text-muted);
+            font-size: .9em; transition: all .15s;
+            border-left: 3px solid transparent;
+        }
+        .sidebar-nav li a:hover, .sidebar-nav li a.active {
+            background: var(--hover); color: var(--text);
+            border-left-color: var(--primary); text-decoration: none;
+        }
+        .sidebar-nav li a .badge {
+            margin-left: auto; background: var(--accent);
+            padding: 2px 8px; border-radius: 10px; font-size: .75em;
+            color: var(--text-muted); min-width: 30px; text-align: center;
+        }
+
+        /* ═══════════════════ MAIN CONTENT ═══════════════════ */
+        .main-content {
+            margin-left: var(--sidebar-w); padding: 24px 32px;
+            transition: margin-left .3s ease; min-height: 100vh;
+        }
+        .sidebar.collapsed ~ .main-content { margin-left: 0; }
+
+        /* ═══════════════════ HEADER / TOOLBAR ═══════════════════ */
+        .top-bar {
+            position: sticky; top: 30px; z-index: 800;
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 12px; padding: 12px 20px;
+            display: flex; align-items: center; gap: 12px;
+            margin-bottom: 24px; box-shadow: var(--shadow);
+            flex-wrap: wrap;
+        }
+        .global-search {
+            flex: 1; min-width: 200px; padding: 8px 14px;
+            border: 1px solid var(--border); border-radius: 8px;
+            background: var(--input-bg); color: var(--text);
+            font-size: .9em; outline: none; transition: border-color .2s;
+        }
+        .global-search:focus { border-color: var(--primary); }
+        .global-search::placeholder { color: var(--text-muted); }
+
+        .toolbar-btn {
+            padding: 7px 14px; border: 1px solid var(--border);
+            border-radius: 8px; background: var(--surface);
+            color: var(--text); cursor: pointer; font-size: .85em;
+            transition: all .15s; display: flex; align-items: center; gap: 5px;
+            white-space: nowrap;
+        }
+        .toolbar-btn:hover { background: var(--hover); border-color: var(--primary); }
+        .toolbar-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+        /* ═══════════════════ BROWSER FILTER PILLS ═══════════════════ */
+        .browser-filters {
+            display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px;
+        }
+        .browser-pill {
+            padding: 6px 16px; border-radius: 20px; font-size: .85em;
+            border: 1px solid var(--border); background: var(--surface);
+            color: var(--text); cursor: pointer; transition: all .15s;
+        }
+        .browser-pill:hover { border-color: var(--primary); }
+        .browser-pill.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+        /* ═══════════════════ REPORT HEADER ═══════════════════ */
+        .report-header {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 12px; padding: 28px; margin-bottom: 24px;
+            box-shadow: var(--shadow);
+        }
+        .report-header h1 { font-size: 1.8em; color: var(--danger); margin-bottom: 16px; }
+        .meta-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 12px;
+        }
+        .meta-item { font-size: .9em; }
+        .meta-item strong { color: var(--text-muted); font-weight: 500; }
+
+        /* ═══════════════════ SUMMARY CARDS ═══════════════════ */
+        .summary-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px; margin-bottom: 24px;
+        }
+        .summary-card {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 12px; padding: 20px; text-align: center;
+            box-shadow: var(--shadow); transition: transform .15s, border-color .15s;
+            cursor: pointer;
+        }
+        .summary-card:hover { transform: translateY(-2px); border-color: var(--primary); }
+        .summary-card .icon { font-size: 1.5em; margin-bottom: 6px; }
+        .summary-card .count {
+            font-size: 2em; font-weight: 700; color: var(--danger);
+            line-height: 1.1;
+        }
+        .summary-card .label { font-size: .82em; color: var(--text-muted); margin-top: 4px; }
+
+        /* ═══════════════════ SECTIONS ═══════════════════ */
+        .section {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 12px; margin-bottom: 24px;
+            box-shadow: var(--shadow); overflow: hidden;
+        }
+        .section-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 16px 24px; cursor: pointer; user-select: none;
+            border-bottom: 1px solid var(--border); transition: background .15s;
+        }
+        .section-header:hover { background: var(--hover); }
+        .section-header h2 { font-size: 1.15em; display: flex; align-items: center; gap: 8px; }
+        .section-header .section-badge {
+            background: var(--accent); padding: 3px 10px; border-radius: 10px;
+            font-size: .78em; color: var(--text-muted); font-weight: 400;
+        }
+        .section-header .chevron {
+            transition: transform .2s; font-size: .9em; color: var(--text-muted);
+        }
+        .section-header.collapsed .chevron { transform: rotate(-90deg); }
+        .section-body { padding: 20px 24px; }
+        .section-body.collapsed { display: none; }
+
+        /* ═══════════════════ TABLE TOOLBAR ═══════════════════ */
+        .table-toolbar {
+            display: flex; align-items: center; gap: 10px;
+            margin-bottom: 12px; flex-wrap: wrap;
+        }
+        .table-search {
+            flex: 1; min-width: 180px; padding: 7px 12px;
+            border: 1px solid var(--border); border-radius: 6px;
+            background: var(--input-bg); color: var(--text);
+            font-size: .85em; outline: none;
+        }
+        .table-search:focus { border-color: var(--primary); }
+        .table-info {
+            font-size: .8em; color: var(--text-muted); white-space: nowrap;
+        }
+
+        /* ═══════════════════ DATE RANGE FILTER ═══════════════════ */
+        .date-filter {
+            display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+        }
+        .date-filter label { font-size: .82em; color: var(--text-muted); }
+        .date-filter input[type="date"] {
+            padding: 5px 8px; border: 1px solid var(--border);
+            border-radius: 6px; background: var(--input-bg);
+            color: var(--text); font-size: .82em;
+        }
+
+        /* ═══════════════════ TABLES ═══════════════════ */
+        .table-wrapper {
+            overflow-x: auto; border: 1px solid var(--border);
+            border-radius: 8px; max-height: 600px; overflow-y: auto;
+        }
+        table {
+            width: 100%; border-collapse: collapse; font-size: .85em;
+        }
+        thead { position: sticky; top: 0; z-index: 10; }
+        th {
+            background: var(--card); padding: 10px 14px;
+            text-align: left; font-weight: 600; font-size: .82em;
+            text-transform: uppercase; letter-spacing: .4px;
+            color: var(--text-muted); border-bottom: 2px solid var(--border);
+            cursor: pointer; user-select: none; white-space: nowrap;
+            position: relative;
+        }
+        th:hover { color: var(--text); background: var(--hover); }
+        th .sort-icon { margin-left: 4px; font-size: .7em; opacity: .4; }
+        th.sort-asc .sort-icon, th.sort-desc .sort-icon { opacity: 1; color: var(--primary); }
+        th .col-filter {
+            display: block; width: 100%; margin-top: 6px;
+            padding: 3px 6px; border: 1px solid var(--border);
+            border-radius: 4px; background: var(--input-bg);
+            color: var(--text); font-size: .9em; font-weight: 400;
+            text-transform: none; letter-spacing: 0;
+        }
+        td {
+            padding: 9px 14px; border-bottom: 1px solid var(--border);
+            max-width: 350px; overflow: hidden; text-overflow: ellipsis;
+            white-space: nowrap; vertical-align: middle;
+        }
+        td.wrap { white-space: normal; word-break: break-all; }
+        tr:hover td { background: var(--hover); }
+        tr.highlight td { background: rgba(233, 69, 96, .08); }
+        tr.selected td { background: rgba(26, 115, 232, .12); border-left: 3px solid var(--primary); }
+
+        /* ═══════════════════ PAGINATION ═══════════════════ */
+        .pagination {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 12px 0; gap: 12px; flex-wrap: wrap;
+        }
+        .page-controls {
+            display: flex; align-items: center; gap: 6px;
+        }
+        .page-btn {
+            padding: 5px 12px; border: 1px solid var(--border);
+            border-radius: 6px; background: var(--surface);
+            color: var(--text); cursor: pointer; font-size: .82em;
+            transition: all .15s;
+        }
+        .page-btn:hover:not(:disabled) { background: var(--hover); border-color: var(--primary); }
+        .page-btn:disabled { opacity: .4; cursor: default; }
+        .page-btn.current { background: var(--primary); color: #fff; border-color: var(--primary); }
+        .page-size-select {
+            padding: 5px 8px; border: 1px solid var(--border);
+            border-radius: 6px; background: var(--input-bg);
+            color: var(--text); font-size: .82em;
+        }
+
+        /* ═══════════════════ PASSWORD CELLS ═══════════════════ */
+        .pw-cell { display: flex; align-items: center; gap: 6px; }
+        .pw-mask { font-family: monospace; letter-spacing: 2px; color: var(--text-muted); }
+        .pw-reveal {
+            background: none; border: none; cursor: pointer;
+            font-size: .9em; padding: 2px; color: var(--text-muted);
+        }
+        .pw-reveal:hover { color: var(--text); }
+        .pw-text { font-family: monospace; }
+        .pw-reused { color: var(--danger); font-weight: 600; }
+
+        /* ═══════════════════ CHARTS ═══════════════════ */
+        .charts-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+            gap: 20px; margin-bottom: 20px;
+        }
+        .chart-card {
+            background: var(--card); border: 1px solid var(--border);
+            border-radius: 10px; padding: 16px; position: relative;
+        }
+        .chart-card h4 { margin-bottom: 10px; font-size: .92em; color: var(--text-muted); }
+        .chart-container { position: relative; height: 280px; }
+        .chart-fullscreen-btn {
+            position: absolute; top: 8px; right: 8px;
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 6px; padding: 4px 8px; cursor: pointer;
+            font-size: .75em; color: var(--text-muted); z-index: 5;
+        }
+        .chart-fullscreen-btn:hover { color: var(--text); border-color: var(--primary); }
+
+        /* ═══════════════════ MODAL (Detail View / Fullscreen) ═══════════════════ */
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,.6);
+            z-index: 2000; display: none; align-items: center; justify-content: center;
+            backdrop-filter: blur(4px);
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 16px; width: 90%; max-width: 800px;
+            max-height: 85vh; overflow-y: auto; box-shadow: var(--shadow);
+        }
+        .modal.fullscreen { max-width: 95vw; max-height: 92vh; }
+        .modal-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 16px 24px; border-bottom: 1px solid var(--border);
+        }
+        .modal-header h3 { font-size: 1.1em; }
+        .modal-close {
+            background: none; border: none; font-size: 1.5em;
+            cursor: pointer; color: var(--text-muted); padding: 4px;
+        }
+        .modal-close:hover { color: var(--danger); }
+        .modal-body { padding: 20px 24px; }
+        .detail-grid {
+            display: grid; grid-template-columns: 140px 1fr; gap: 8px 16px;
+        }
+        .detail-label { font-weight: 600; color: var(--text-muted); font-size: .9em; }
+        .detail-value { word-break: break-all; font-size: .9em; }
+
+        /* ═══════════════════ BACK TO TOP ═══════════════════ */
+        .back-to-top {
+            position: fixed; bottom: 24px; right: 24px; z-index: 1500;
+            width: 44px; height: 44px; border-radius: 50%;
+            background: var(--primary); color: #fff; border: none;
+            cursor: pointer; font-size: 1.2em; box-shadow: var(--shadow);
+            display: none; align-items: center; justify-content: center;
+            transition: transform .2s;
+        }
+        .back-to-top:hover { transform: scale(1.1); }
+        .back-to-top.visible { display: flex; }
+
+        /* ═══════════════════ KEYBOARD SHORTCUT HINT ═══════════════════ */
+        .kbd {
+            display: inline-block; padding: 1px 6px; font-size: .75em;
+            border: 1px solid var(--border); border-radius: 4px;
+            background: var(--card); font-family: monospace; margin-left: 4px;
+        }
+
+        /* ═══════════════════ TOAST ═══════════════════ */
+        .toast {
+            position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
+            background: var(--card); color: var(--text); padding: 10px 24px;
+            border-radius: 10px; border: 1px solid var(--border);
+            box-shadow: var(--shadow); z-index: 3000;
+            transition: transform .3s ease; font-size: .88em;
+        }
+        .toast.show { transform: translateX(-50%) translateY(0); }
+
+        /* ═══════════════════ RESPONSIVE ═══════════════════ */
+        @media (max-width: 900px) {
+            .sidebar { transform: translateX(calc(-1 * var(--sidebar-w))); }
+            .sidebar.open { transform: translateX(0); }
+            .sidebar-toggle { display: flex !important; }
+            .main-content { margin-left: 0 !important; padding: 16px; }
+            .charts-grid { grid-template-columns: 1fr; }
+        }
+
+        /* ═══════════════════ PRINT ═══════════════════ */
+        @media print {
+            .sidebar, .top-bar, .back-to-top, .sidebar-toggle,
+            .table-toolbar, .pagination, .chart-fullscreen-btn,
+            .toolbar-btn, .browser-filters, .toast { display: none !important; }
+            .main-content { margin-left: 0 !important; }
+            .section-body.collapsed { display: block !important; }
+            body { background: #fff !important; color: #000 !important; font-size: 10pt; }
+            .section, .report-header, .summary-card, .chart-card {
+                box-shadow: none !important; border: 1px solid #ccc !important;
+                break-inside: avoid;
+            }
+            .table-wrapper { max-height: none !important; overflow: visible !important; }
+            td { white-space: normal !important; max-width: none !important; }
+        }
+    </style>
+</head>
+<body>
+    <!-- ════════════ DISCLAIMER ════════════ -->
+    <div class="disclaimer">
+        ⚠️ This report was generated by BrowserForensics for authorized forensic investigation purposes only.
+    </div>
+
+    <!-- ════════════ SIDEBAR NAVIGATION ════════════ -->
+    <nav class="sidebar" id="sidebar">
+        <ul class="sidebar-nav">
+            <li><a href="#summary" class="active" onclick="scrollToSection('summary')">
+                <span>📊</span> Summary <span class="badge">{{ report.profiles|length }}</span>
+            </a></li>
+            <li><a href="#passwords" onclick="scrollToSection('passwords')">
+                <span>🔑</span> Passwords <span class="badge">{{ total_passwords }}</span>
+            </a></li>
+            <li><a href="#history" onclick="scrollToSection('history')">
+                <span>🌐</span> History <span class="badge">{{ total_history }}</span>
+            </a></li>
+            <li><a href="#cookies" onclick="scrollToSection('cookies')">
+                <span>🍪</span> Cookies <span class="badge">{{ total_cookies }}</span>
+            </a></li>
+            <li><a href="#autofill" onclick="scrollToSection('autofill')">
+                <span>📝</span> Autofill <span class="badge">{{ total_autofill }}</span>
+            </a></li>
+            <li><a href="#bookmarks" onclick="scrollToSection('bookmarks')">
+                <span>⭐</span> Bookmarks <span class="badge">{{ total_bookmarks }}</span>
+            </a></li>
+            <li><a href="#downloads" onclick="scrollToSection('downloads')">
+                <span>⬇️</span> Downloads <span class="badge">{{ total_downloads }}</span>
+            </a></li>
+        </ul>
+    </nav>
+    <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="Toggle sidebar">☰</button>
+
+    <!-- ════════════ MAIN CONTENT ════════════ -->
+    <div class="main-content" id="mainContent">
+
+        <!-- Global Toolbar -->
+        <div class="top-bar">
+            <input type="text" class="global-search" id="globalSearch"
+                   placeholder="🔍  Global search across all sections... (Ctrl+K)"
+                   oninput="globalSearchHandler(this.value)">
+            <button class="toolbar-btn" onclick="toggleTheme()" title="Toggle theme">🌗 Theme</button>
+            <button class="toolbar-btn" onclick="expandAllSections()" title="Expand all sections">📂 Expand All</button>
+            <button class="toolbar-btn" onclick="collapseAllSections()" title="Collapse all sections">📁 Collapse All</button>
+            <button class="toolbar-btn" onclick="window.print()" title="Print report">🖨️ Print</button>
+        </div>
+
+        <!-- Browser Filter Pills -->
+        <div class="browser-filters" id="browserFilters">
+            <button class="browser-pill active" onclick="filterByBrowser('all', this)">All Browsers</button>
+            {% set seen_browsers = [] %}
+            {% for profile in report.profiles %}
+                {% if profile.browser_name not in seen_browsers %}
+                    {% if seen_browsers.append(profile.browser_name) %}{% endif %}
+                    <button class="browser-pill" onclick="filterByBrowser(this.dataset.browser, this)" data-browser="{{ profile.browser_name }}">
+                        {{ profile.browser_name }}
+                    </button>
+                {% endif %}
+            {% endfor %}
+        </div>
+
+        <!-- ════════════ REPORT HEADER ════════════ -->
+        <div class="report-header">
+            <h1>🔍 Browser Forensics Report</h1>
+            <div class="meta-grid">
+                <div class="meta-item"><strong>Machine:</strong> {{ report.machine_name }}</div>
+                <div class="meta-item"><strong>OS:</strong> {{ report.os_info }}</div>
+                <div class="meta-item"><strong>Examiner:</strong> {{ report.examiner }}</div>
+                <div class="meta-item"><strong>Extracted:</strong> {{ report.extraction_time | datetime_str }}</div>
+                <div class="meta-item"><strong>Report Generated:</strong> {{ generation_time }}</div>
+                <div class="meta-item"><strong>Profiles Analyzed:</strong> {{ report.profiles|length }}</div>
+            </div>
+        </div>
+
+        <!-- ════════════ SUMMARY ════════════ -->
+        <div id="summary">
+            <div class="summary-grid">
+                <div class="summary-card" onclick="scrollToSection('passwords')">
+                    <div class="icon">🔑</div>
+                    <div class="count" id="live-passwords">{{ total_passwords }}</div>
+                    <div class="label">Passwords</div>
+                </div>
+                <div class="summary-card" onclick="scrollToSection('history')">
+                    <div class="icon">🌐</div>
+                    <div class="count" id="live-history">{{ total_history }}</div>
+                    <div class="label">History Records</div>
+                </div>
+                <div class="summary-card" onclick="scrollToSection('cookies')">
+                    <div class="icon">🍪</div>
+                    <div class="count" id="live-cookies">{{ total_cookies }}</div>
+                    <div class="label">Cookies</div>
+                </div>
+                <div class="summary-card" onclick="scrollToSection('autofill')">
+                    <div class="icon">📝</div>
+                    <div class="count" id="live-autofill">{{ total_autofill }}</div>
+                    <div class="label">Autofill Entries</div>
+                </div>
+                <div class="summary-card" onclick="scrollToSection('bookmarks')">
+                    <div class="icon">⭐</div>
+                    <div class="count" id="live-bookmarks">{{ total_bookmarks }}</div>
+                    <div class="label">Bookmarks</div>
+                </div>
+                <div class="summary-card" onclick="scrollToSection('downloads')">
+                    <div class="icon">⬇️</div>
+                    <div class="count" id="live-downloads">{{ total_downloads }}</div>
+                    <div class="label">Downloads</div>
+                </div>
+            </div>
+
+            <!-- Summary Charts -->
+            <div class="charts-grid">
+                <div class="chart-card">
+                    <h4>Artifacts per Browser</h4>
+                    <button class="chart-fullscreen-btn" onclick="fullscreenChart('summaryChart')">⛶</button>
+                    <div class="chart-container"><canvas id="summaryChart"></canvas></div>
+                </div>
+                <div class="chart-card">
+                    <h4>Password Security</h4>
+                    <button class="chart-fullscreen-btn" onclick="fullscreenChart('passwordsChart')">⛶</button>
+                    <div class="chart-container"><canvas id="passwordsChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ════════════ PASSWORDS ════════════ -->
+        <div class="section" id="passwords" data-section="passwords">
+            <div class="section-header" onclick="toggleSection(this)">
+                <h2>🔑 Saved Passwords <span class="section-badge">{{ total_passwords }}</span></h2>
+                <span class="chevron">▾</span>
+            </div>
+            <div class="section-body">
+                <div class="table-toolbar">
+                    <input type="text" class="table-search" data-table="passwords-table" placeholder="Search passwords..." oninput="filterTable('passwords-table')">
+                    <button class="toolbar-btn" style="background:var(--primary);color:#fff" onclick="filterTable('passwords-table')">🔍 Apply Filters</button>
+                    <button class="toolbar-btn" onclick="clearAllFilters('passwords-table')">✕ Clear Filters</button>
+                    <button class="toolbar-btn" onclick="toggleAllPasswords()">👁️ Show/Hide All</button>
+                    <button class="toolbar-btn" onclick="exportCSV('passwords-table', 'passwords')">📥 Export CSV</button>
+                    <span class="table-info" id="passwords-table-info"></span>
+                </div>
+                <div class="table-wrapper">
+                    <table id="passwords-table" data-page="1" data-pagesize="50">
+                        <thead>
+                            <tr>
+                                <th data-col="0" onclick="sortColumn('passwords-table',0)">Browser <span class="sort-icon">⇅</span></th>
+                                <th data-col="1" onclick="sortColumn('passwords-table',1)">URL <span class="sort-icon">⇅</span></th>
+                                <th data-col="2" onclick="sortColumn('passwords-table',2)">Username <span class="sort-icon">⇅</span></th>
+                                <th data-col="3">Password</th>
+                                <th data-col="4" onclick="sortColumn('passwords-table',4)">Created <span class="sort-icon">⇅</span></th>
+                                <th data-col="5" onclick="sortColumn('passwords-table',5)">Last Used <span class="sort-icon">⇅</span></th>
+                            </tr>
+                            <tr class="filter-row">
+                                <th><input class="col-filter" data-col="0" data-table="passwords-table" placeholder="Filter..." oninput="filterTable('passwords-table')"></th>
+                                <th><input class="col-filter" data-col="1" data-table="passwords-table" placeholder="Filter..." oninput="filterTable('passwords-table')"></th>
+                                <th><input class="col-filter" data-col="2" data-table="passwords-table" placeholder="Filter..." oninput="filterTable('passwords-table')"></th>
+                                <th></th>
+                                <th><input class="col-filter" data-col="4" data-table="passwords-table" placeholder="Filter..." oninput="filterTable('passwords-table')"></th>
+                                <th><input class="col-filter" data-col="5" data-table="passwords-table" placeholder="Filter..." oninput="filterTable('passwords-table')"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for profile in report.profiles %}
+                            {% for pw in profile.passwords %}
+                            <tr data-browser="{{ profile.browser_name }}" onclick="showDetail(this, 'Password')" class="data-row">
+                                <td>{{ profile.browser_name }}</td>
+                                <td class="wrap">{{ pw.url }}</td>
+                                <td>{{ pw.username }}</td>
+                                <td>
+                                    <div class="pw-cell">
+                                        <span class="pw-mask">••••••••</span>
+                                        <span class="pw-text" style="display:none">{{ pw.password }}</span>
+                                        <button class="pw-reveal" onclick="event.stopPropagation(); togglePw(this)" title="Reveal">👁️</button>
+                                    </div>
+                                </td>
+                                <td>{{ pw.date_created | datetime_str }}</td>
+                                <td>{{ pw.date_last_used | datetime_str }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="pagination" data-table="passwords-table">
+                    <div class="page-controls" id="passwords-table-pages"></div>
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <label style="font-size:.82em;color:var(--text-muted)">Rows per page:</label>
+                        <select class="page-size-select" onchange="changePageSize('passwords-table', this.value)">
+                            <option value="25">25</option><option value="50" selected>50</option>
+                            <option value="100">100</option><option value="0">All</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ════════════ HISTORY ════════════ -->
+        <div class="section" id="history" data-section="history">
+            <div class="section-header" onclick="toggleSection(this)">
+                <h2>🌐 Browsing History <span class="section-badge">{{ total_history }}</span></h2>
+                <span class="chevron">▾</span>
+            </div>
+            <div class="section-body">
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <h4>Activity Timeline (Last 90 Days)</h4>
+                        <button class="chart-fullscreen-btn" onclick="fullscreenChart('historyTimelineChart')">⛶</button>
+                        <div class="chart-container"><canvas id="historyTimelineChart"></canvas></div>
+                    </div>
+                    <div class="chart-card">
+                        <h4>Top 20 Visited Domains</h4>
+                        <button class="chart-fullscreen-btn" onclick="fullscreenChart('topDomainsChart')">⛶</button>
+                        <div class="chart-container"><canvas id="topDomainsChart"></canvas></div>
+                    </div>
+                    <div class="chart-card">
+                        <h4>Hourly Activity Distribution</h4>
+                        <button class="chart-fullscreen-btn" onclick="fullscreenChart('hourlyActivityChart')">⛶</button>
+                        <div class="chart-container"><canvas id="hourlyActivityChart"></canvas></div>
+                    </div>
+                </div>
+                <div class="table-toolbar">
+                    <input type="text" class="table-search" data-table="history-table" placeholder="Search history..." oninput="filterTable('history-table')">
+                    <div class="date-filter">
+                        <label>From:</label>
+                        <input type="date" id="history-date-from" onchange="filterTable('history-table')">
+                        <label>To:</label>
+                        <input type="date" id="history-date-to" onchange="filterTable('history-table')">
+                    </div>
+                    <button class="toolbar-btn" style="background:var(--primary);color:#fff" onclick="filterTable('history-table')">🔍 Apply Filters</button>
+                    <button class="toolbar-btn" onclick="clearAllFilters('history-table')">✕ Clear Filters</button>
+                    <button class="toolbar-btn" onclick="exportCSV('history-table', 'history')">📥 CSV</button>
+                    <span class="table-info" id="history-table-info"></span>
+                </div>
+                <div class="table-wrapper">
+                    <table id="history-table" data-page="1" data-pagesize="50" data-datecol="4">
+                        <thead>
+                            <tr>
+                                <th data-col="0" onclick="sortColumn('history-table',0)">Browser <span class="sort-icon">⇅</span></th>
+                                <th data-col="1" onclick="sortColumn('history-table',1)">URL <span class="sort-icon">⇅</span></th>
+                                <th data-col="2" onclick="sortColumn('history-table',2)">Title <span class="sort-icon">⇅</span></th>
+                                <th data-col="3" onclick="sortColumn('history-table',3)">Visits <span class="sort-icon">⇅</span></th>
+                                <th data-col="4" onclick="sortColumn('history-table',4)">Last Visit <span class="sort-icon">⇅</span></th>
+                            </tr>
+                            <tr class="filter-row">
+                                <th><input class="col-filter" data-col="0" data-table="history-table" placeholder="Filter..." oninput="filterTable('history-table')"></th>
+                                <th><input class="col-filter" data-col="1" data-table="history-table" placeholder="Filter..." oninput="filterTable('history-table')"></th>
+                                <th><input class="col-filter" data-col="2" data-table="history-table" placeholder="Filter..." oninput="filterTable('history-table')"></th>
+                                <th><input class="col-filter" data-col="3" data-table="history-table" placeholder="Filter..." oninput="filterTable('history-table')"></th>
+                                <th><input class="col-filter" data-col="4" data-table="history-table" placeholder="Filter..." oninput="filterTable('history-table')"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for profile in report.profiles %}
+                            {% for entry in profile.history %}
+                            <tr data-browser="{{ profile.browser_name }}" onclick="showDetail(this, 'History')" class="data-row">
+                                <td>{{ profile.browser_name }}</td>
+                                <td class="wrap">{{ entry.url }}</td>
+                                <td>{{ entry.title }}</td>
+                                <td>{{ entry.visit_count }}</td>
+                                <td>{{ entry.last_visit_time | datetime_str }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="pagination" data-table="history-table">
+                    <div class="page-controls" id="history-table-pages"></div>
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <label style="font-size:.82em;color:var(--text-muted)">Rows per page:</label>
+                        <select class="page-size-select" onchange="changePageSize('history-table', this.value)">
+                            <option value="25">25</option><option value="50" selected>50</option>
+                            <option value="100">100</option><option value="0">All</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ════════════ COOKIES ════════════ -->
+        <div class="section" id="cookies" data-section="cookies">
+            <div class="section-header" onclick="toggleSection(this)">
+                <h2>🍪 Cookies <span class="section-badge">{{ total_cookies }}</span></h2>
+                <span class="chevron">▾</span>
+            </div>
+            <div class="section-body">
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <h4>Cookie Distribution by Domain</h4>
+                        <button class="chart-fullscreen-btn" onclick="fullscreenChart('cookiesChart')">⛶</button>
+                        <div class="chart-container"><canvas id="cookiesChart"></canvas></div>
+                    </div>
+                </div>
+                <div class="table-toolbar">
+                    <input type="text" class="table-search" data-table="cookies-table" placeholder="Search cookies..." oninput="filterTable('cookies-table')">
+                    <button class="toolbar-btn" style="background:var(--primary);color:#fff" onclick="filterTable('cookies-table')">🔍 Apply Filters</button>
+                    <button class="toolbar-btn" onclick="clearAllFilters('cookies-table')">✕ Clear Filters</button>
+                    <button class="toolbar-btn" onclick="exportCSV('cookies-table', 'cookies')">📥 CSV</button>
+                    <span class="table-info" id="cookies-table-info"></span>
+                </div>
+                <div class="table-wrapper">
+                    <table id="cookies-table" data-page="1" data-pagesize="50">
+                        <thead>
+                            <tr>
+                                <th data-col="0" onclick="sortColumn('cookies-table',0)">Browser <span class="sort-icon">⇅</span></th>
+                                <th data-col="1" onclick="sortColumn('cookies-table',1)">Host <span class="sort-icon">⇅</span></th>
+                                <th data-col="2" onclick="sortColumn('cookies-table',2)">Name <span class="sort-icon">⇅</span></th>
+                                <th data-col="3" onclick="sortColumn('cookies-table',3)">Value <span class="sort-icon">⇅</span></th>
+                                <th data-col="4" onclick="sortColumn('cookies-table',4)">Path <span class="sort-icon">⇅</span></th>
+                                <th data-col="5" onclick="sortColumn('cookies-table',5)">Expires <span class="sort-icon">⇅</span></th>
+                                <th data-col="6" onclick="sortColumn('cookies-table',6)">Secure <span class="sort-icon">⇅</span></th>
+                                <th data-col="7" onclick="sortColumn('cookies-table',7)">HttpOnly <span class="sort-icon">⇅</span></th>
+                            </tr>
+                            <tr class="filter-row">
+                                <th><input class="col-filter" data-col="0" data-table="cookies-table" placeholder="Filter..." oninput="filterTable('cookies-table')"></th>
+                                <th><input class="col-filter" data-col="1" data-table="cookies-table" placeholder="Filter..." oninput="filterTable('cookies-table')"></th>
+                                <th><input class="col-filter" data-col="2" data-table="cookies-table" placeholder="Filter..." oninput="filterTable('cookies-table')"></th>
+                                <th><input class="col-filter" data-col="3" data-table="cookies-table" placeholder="Filter..." oninput="filterTable('cookies-table')"></th>
+                                <th></th><th></th><th></th><th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for profile in report.profiles %}
+                            {% for cookie in profile.cookies %}
+                            <tr data-browser="{{ profile.browser_name }}" onclick="showDetail(this, 'Cookie')" class="data-row">
+                                <td>{{ profile.browser_name }}</td>
+                                <td>{{ cookie.host }}</td>
+                                <td>{{ cookie.name }}</td>
+                                <td class="wrap">{{ cookie.value[:80] }}{% if cookie.value|length > 80 %}…{% endif %}</td>
+                                <td>{{ cookie.path }}</td>
+                                <td>{{ cookie.expires | datetime_str }}</td>
+                                <td>{{ '✅' if cookie.is_secure else '❌' }}</td>
+                                <td>{{ '✅' if cookie.is_httponly else '❌' }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="pagination" data-table="cookies-table">
+                    <div class="page-controls" id="cookies-table-pages"></div>
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <label style="font-size:.82em;color:var(--text-muted)">Rows per page:</label>
+                        <select class="page-size-select" onchange="changePageSize('cookies-table', this.value)">
+                            <option value="25">25</option><option value="50" selected>50</option>
+                            <option value="100">100</option><option value="0">All</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ════════════ AUTOFILL ════════════ -->
+        <div class="section" id="autofill" data-section="autofill">
+            <div class="section-header" onclick="toggleSection(this)">
+                <h2>📝 Autofill Data <span class="section-badge">{{ total_autofill }}</span></h2>
+                <span class="chevron">▾</span>
+            </div>
+            <div class="section-body">
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <h4>Most Common Form Fields</h4>
+                        <button class="chart-fullscreen-btn" onclick="fullscreenChart('autofillChart')">⛶</button>
+                        <div class="chart-container"><canvas id="autofillChart"></canvas></div>
+                    </div>
+                </div>
+                <div class="table-toolbar">
+                    <input type="text" class="table-search" data-table="autofill-table" placeholder="Search autofill..." oninput="filterTable('autofill-table')">
+                    <button class="toolbar-btn" style="background:var(--primary);color:#fff" onclick="filterTable('autofill-table')">🔍 Apply Filters</button>
+                    <button class="toolbar-btn" onclick="clearAllFilters('autofill-table')">✕ Clear Filters</button>
+                    <button class="toolbar-btn" onclick="exportCSV('autofill-table', 'autofill')">📥 CSV</button>
+                    <span class="table-info" id="autofill-table-info"></span>
+                </div>
+                <div class="table-wrapper">
+                    <table id="autofill-table" data-page="1" data-pagesize="50">
+                        <thead>
+                            <tr>
+                                <th data-col="0" onclick="sortColumn('autofill-table',0)">Browser <span class="sort-icon">⇅</span></th>
+                                <th data-col="1" onclick="sortColumn('autofill-table',1)">Field Name <span class="sort-icon">⇅</span></th>
+                                <th data-col="2" onclick="sortColumn('autofill-table',2)">Value <span class="sort-icon">⇅</span></th>
+                                <th data-col="3" onclick="sortColumn('autofill-table',3)">Use Count <span class="sort-icon">⇅</span></th>
+                                <th data-col="4" onclick="sortColumn('autofill-table',4)">Created <span class="sort-icon">⇅</span></th>
+                                <th data-col="5" onclick="sortColumn('autofill-table',5)">Last Used <span class="sort-icon">⇅</span></th>
+                            </tr>
+                            <tr class="filter-row">
+                                <th><input class="col-filter" data-col="0" data-table="autofill-table" placeholder="Filter..." oninput="filterTable('autofill-table')"></th>
+                                <th><input class="col-filter" data-col="1" data-table="autofill-table" placeholder="Filter..." oninput="filterTable('autofill-table')"></th>
+                                <th><input class="col-filter" data-col="2" data-table="autofill-table" placeholder="Filter..." oninput="filterTable('autofill-table')"></th>
+                                <th></th><th></th><th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for profile in report.profiles %}
+                            {% for field in profile.autofill %}
+                            <tr data-browser="{{ profile.browser_name }}" onclick="showDetail(this, 'Autofill')" class="data-row">
+                                <td>{{ profile.browser_name }}</td>
+                                <td>{{ field.field_name }}</td>
+                                <td>{{ field.value }}</td>
+                                <td>{{ field.use_count }}</td>
+                                <td>{{ field.date_created | datetime_str }}</td>
+                                <td>{{ field.date_last_used | datetime_str }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="pagination" data-table="autofill-table">
+                    <div class="page-controls" id="autofill-table-pages"></div>
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <label style="font-size:.82em;color:var(--text-muted)">Rows per page:</label>
+                        <select class="page-size-select" onchange="changePageSize('autofill-table', this.value)">
+                            <option value="25">25</option><option value="50" selected>50</option>
+                            <option value="100">100</option><option value="0">All</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ════════════ BOOKMARKS ════════════ -->
+        <div class="section" id="bookmarks" data-section="bookmarks">
+            <div class="section-header" onclick="toggleSection(this)">
+                <h2>⭐ Bookmarks <span class="section-badge">{{ total_bookmarks }}</span></h2>
+                <span class="chevron">▾</span>
+            </div>
+            <div class="section-body">
+                <div class="table-toolbar">
+                    <input type="text" class="table-search" data-table="bookmarks-table" placeholder="Search bookmarks..." oninput="filterTable('bookmarks-table')">
+                    <button class="toolbar-btn" style="background:var(--primary);color:#fff" onclick="filterTable('bookmarks-table')">🔍 Apply Filters</button>
+                    <button class="toolbar-btn" onclick="clearAllFilters('bookmarks-table')">✕ Clear Filters</button>
+                    <button class="toolbar-btn" onclick="exportCSV('bookmarks-table', 'bookmarks')">📥 CSV</button>
+                    <span class="table-info" id="bookmarks-table-info"></span>
+                </div>
+                <div class="table-wrapper">
+                    <table id="bookmarks-table" data-page="1" data-pagesize="50">
+                        <thead>
+                            <tr>
+                                <th data-col="0" onclick="sortColumn('bookmarks-table',0)">Browser <span class="sort-icon">⇅</span></th>
+                                <th data-col="1" onclick="sortColumn('bookmarks-table',1)">Title <span class="sort-icon">⇅</span></th>
+                                <th data-col="2" onclick="sortColumn('bookmarks-table',2)">URL <span class="sort-icon">⇅</span></th>
+                                <th data-col="3" onclick="sortColumn('bookmarks-table',3)">Folder <span class="sort-icon">⇅</span></th>
+                                <th data-col="4" onclick="sortColumn('bookmarks-table',4)">Date Added <span class="sort-icon">⇅</span></th>
+                            </tr>
+                            <tr class="filter-row">
+                                <th><input class="col-filter" data-col="0" data-table="bookmarks-table" placeholder="Filter..." oninput="filterTable('bookmarks-table')"></th>
+                                <th><input class="col-filter" data-col="1" data-table="bookmarks-table" placeholder="Filter..." oninput="filterTable('bookmarks-table')"></th>
+                                <th><input class="col-filter" data-col="2" data-table="bookmarks-table" placeholder="Filter..." oninput="filterTable('bookmarks-table')"></th>
+                                <th><input class="col-filter" data-col="3" data-table="bookmarks-table" placeholder="Filter..." oninput="filterTable('bookmarks-table')"></th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for profile in report.profiles %}
+                            {% for bm in profile.bookmarks %}
+                            <tr data-browser="{{ profile.browser_name }}" onclick="showDetail(this, 'Bookmark')" class="data-row">
+                                <td>{{ profile.browser_name }}</td>
+                                <td>{{ bm.title }}</td>
+                                <td class="wrap">{{ bm.url }}</td>
+                                <td>{{ bm.folder }}</td>
+                                <td>{{ bm.date_added | datetime_str }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="pagination" data-table="bookmarks-table">
+                    <div class="page-controls" id="bookmarks-table-pages"></div>
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <label style="font-size:.82em;color:var(--text-muted)">Rows per page:</label>
+                        <select class="page-size-select" onchange="changePageSize('bookmarks-table', this.value)">
+                            <option value="25">25</option><option value="50" selected>50</option>
+                            <option value="100">100</option><option value="0">All</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ════════════ DOWNLOADS ════════════ -->
+        <div class="section" id="downloads" data-section="downloads">
+            <div class="section-header" onclick="toggleSection(this)">
+                <h2>⬇️ Downloads <span class="section-badge">{{ total_downloads }}</span></h2>
+                <span class="chevron">▾</span>
+            </div>
+            <div class="section-body">
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <h4>Download File Types</h4>
+                        <button class="chart-fullscreen-btn" onclick="fullscreenChart('downloadsChart')">⛶</button>
+                        <div class="chart-container"><canvas id="downloadsChart"></canvas></div>
+                    </div>
+                </div>
+                <div class="table-toolbar">
+                    <input type="text" class="table-search" data-table="downloads-table" placeholder="Search downloads..." oninput="filterTable('downloads-table')">
+                    <button class="toolbar-btn" style="background:var(--primary);color:#fff" onclick="filterTable('downloads-table')">🔍 Apply Filters</button>
+                    <button class="toolbar-btn" onclick="clearAllFilters('downloads-table')">✕ Clear Filters</button>
+                    <button class="toolbar-btn" onclick="exportCSV('downloads-table', 'downloads')">📥 CSV</button>
+                    <span class="table-info" id="downloads-table-info"></span>
+                </div>
+                <div class="table-wrapper">
+                    <table id="downloads-table" data-page="1" data-pagesize="50">
+                        <thead>
+                            <tr>
+                                <th data-col="0" onclick="sortColumn('downloads-table',0)">Browser <span class="sort-icon">⇅</span></th>
+                                <th data-col="1" onclick="sortColumn('downloads-table',1)">URL <span class="sort-icon">⇅</span></th>
+                                <th data-col="2" onclick="sortColumn('downloads-table',2)">File Path <span class="sort-icon">⇅</span></th>
+                                <th data-col="3" onclick="sortColumn('downloads-table',3)">Size <span class="sort-icon">⇅</span></th>
+                                <th data-col="4" onclick="sortColumn('downloads-table',4)">Type <span class="sort-icon">⇅</span></th>
+                                <th data-col="5" onclick="sortColumn('downloads-table',5)">Started <span class="sort-icon">⇅</span></th>
+                                <th data-col="6" onclick="sortColumn('downloads-table',6)">State <span class="sort-icon">⇅</span></th>
+                            </tr>
+                            <tr class="filter-row">
+                                <th><input class="col-filter" data-col="0" data-table="downloads-table" placeholder="Filter..." oninput="filterTable('downloads-table')"></th>
+                                <th><input class="col-filter" data-col="1" data-table="downloads-table" placeholder="Filter..." oninput="filterTable('downloads-table')"></th>
+                                <th><input class="col-filter" data-col="2" data-table="downloads-table" placeholder="Filter..." oninput="filterTable('downloads-table')"></th>
+                                <th></th>
+                                <th><input class="col-filter" data-col="4" data-table="downloads-table" placeholder="Filter..." oninput="filterTable('downloads-table')"></th>
+                                <th></th>
+                                <th><input class="col-filter" data-col="6" data-table="downloads-table" placeholder="Filter..." oninput="filterTable('downloads-table')"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for profile in report.profiles %}
+                            {% for dl in profile.downloads %}
+                            <tr data-browser="{{ profile.browser_name }}" onclick="showDetail(this, 'Download')" class="data-row">
+                                <td>{{ profile.browser_name }}</td>
+                                <td class="wrap">{{ dl.url }}</td>
+                                <td class="wrap">{{ dl.target_path }}</td>
+                                <td>{{ dl.total_bytes }}</td>
+                                <td>{{ dl.mime_type }}</td>
+                                <td>{{ dl.start_time | datetime_str }}</td>
+                                <td>{{ dl.state }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="pagination" data-table="downloads-table">
+                    <div class="page-controls" id="downloads-table-pages"></div>
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <label style="font-size:.82em;color:var(--text-muted)">Rows per page:</label>
+                        <select class="page-size-select" onchange="changePageSize('downloads-table', this.value)">
+                            <option value="25">25</option><option value="50" selected>50</option>
+                            <option value="100">100</option><option value="0">All</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /main-content -->
+
+    <!-- ════════════ DETAIL MODAL ════════════ -->
+    <div class="modal-overlay" id="detailModal" onclick="if(event.target===this)closeModal()">
+        <div class="modal" id="modalContent">
+            <div class="modal-header">
+                <h3 id="modalTitle">Detail View</h3>
+                <div style="display:flex;gap:8px;align-items:center">
+                    <button class="toolbar-btn" onclick="copyDetailToClipboard()" title="Copy to clipboard">📋 Copy</button>
+                    <button class="modal-close" onclick="closeModal()">×</button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div class="detail-grid" id="detailGrid"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ════════════ CHART FULLSCREEN MODAL ════════════ -->
+    <div class="modal-overlay" id="chartModal" onclick="if(event.target===this)closeChartModal()">
+        <div class="modal fullscreen">
+            <div class="modal-header">
+                <h3 id="chartModalTitle">Chart</h3>
+                <button class="modal-close" onclick="closeChartModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div style="height:70vh"><canvas id="chartModalCanvas"></canvas></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Back to Top -->
+    <button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         JAVASCRIPT — All interactive features
+         ═══════════════════════════════════════════════════════════ -->
+    <script>
+    const CHART_COLORS = ['#e94560','#0f3460','#533483','#1a73e8','#00b4d8','#e9c46a','#2a9d8f','#e76f51','#264653','#f4a261'];
+    const chartsData = {{ charts | tojson_safe | safe }};
+    let chartsObj = {};
+    let currentBrowserFilter = 'all';
+    let allPassVisible = false;
+    let fullscreenChartObj = null;
+
+    // ──── TABLE STATE ────
+    const tableState = {};
+    const managedTables = ['passwords-table','history-table','cookies-table','autofill-table','bookmarks-table','downloads-table'];
+
+    managedTables.forEach(id => {
+        tableState[id] = { page: 1, pageSize: 50, sortCol: -1, sortDir: 'asc', allRows: [], visibleRows: [] };
+    });
+
+    // ══════════════════ INITIALIZATION ══════════════════
+    document.addEventListener('DOMContentLoaded', () => {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        initTables();
+        initCharts();
+        updateAllTables();
+
+        // Back-to-top visibility
+        window.addEventListener('scroll', () => {
+            document.getElementById('backToTop').classList.toggle('visible', window.scrollY > 400);
+            updateSidebarActive();
+        });
+    });
+
+    // ══════════════════ TABLE ENGINE ══════════════════
+    function initTables() {
+        managedTables.forEach(id => {
+            const table = document.getElementById(id);
+            if (!table) return;
+            const rows = Array.from(table.querySelectorAll('tbody tr.data-row'));
+            tableState[id].allRows = rows;
+            tableState[id].visibleRows = [...rows];
+        });
+    }
+
+    function filterTable(tableId) {
+        const table = document.getElementById(tableId);
+        if (!table) return;
+        const state = tableState[tableId];
+        const searchInput = document.querySelector(`.table-search[data-table="${tableId}"]`);
+        const searchVal = searchInput ? searchInput.value.toLowerCase() : '';
+        const colFilters = {};
+        document.querySelectorAll(`.col-filter[data-table="${tableId}"]`).forEach(inp => {
+            const col = parseInt(inp.dataset.col);
+            if (inp.value.trim()) colFilters[col] = inp.value.toLowerCase();
+        });
+
+        // Date filter
+        const dateCol = table.dataset.datecol ? parseInt(table.dataset.datecol) : -1;
+        const dateFrom = document.getElementById(tableId.replace('-table','') + '-date-from');
+        const dateTo = document.getElementById(tableId.replace('-table','') + '-date-to');
+        const fromVal = dateFrom ? dateFrom.value : '';
+        const toVal = dateTo ? dateTo.value : '';
+
+        state.visibleRows = state.allRows.filter(row => {
+            // Browser filter
+            if (currentBrowserFilter !== 'all' && row.dataset.browser !== currentBrowserFilter) return false;
+
+            const cells = row.querySelectorAll('td');
+
+            // Global/table search
+            if (searchVal) {
+                let match = false;
+                cells.forEach(c => { if (c.textContent.toLowerCase().includes(searchVal)) match = true; });
+                if (!match) return false;
+            }
+
+            // Column filters
+            for (const [col, val] of Object.entries(colFilters)) {
+                const cell = cells[parseInt(col)];
+                if (cell && !cell.textContent.toLowerCase().includes(val)) return false;
+            }
+
+            // Date range filter
+            if (dateCol >= 0 && (fromVal || toVal)) {
+                const cellText = cells[dateCol] ? cells[dateCol].textContent.trim() : '';
+                if (cellText && cellText !== 'N/A') {
+                    const cellDate = cellText.substring(0, 10); // YYYY-MM-DD
+                    if (fromVal && cellDate < fromVal) return false;
+                    if (toVal && cellDate > toVal) return false;
+                }
+            }
+
+            return true;
+        });
+
+        state.page = 1;
+        renderTable(tableId);
+    }
+
+    function renderTable(tableId) {
+        const table = document.getElementById(tableId);
+        if (!table) return;
+        const state = tableState[tableId];
+        const tbody = table.querySelector('tbody');
+        const pageSize = state.pageSize;
+        const total = state.visibleRows.length;
+
+        // Hide all rows first
+        state.allRows.forEach(r => r.style.display = 'none');
+
+        // Show only current page
+        const start = pageSize > 0 ? (state.page - 1) * pageSize : 0;
+        const end = pageSize > 0 ? Math.min(start + pageSize, total) : total;
+
+        for (let i = start; i < end; i++) {
+            state.visibleRows[i].style.display = '';
+        }
+
+        // Update info
+        const infoEl = document.getElementById(tableId + '-info');
+        if (infoEl) {
+            infoEl.textContent = `Showing ${total > 0 ? start + 1 : 0}–${end} of ${total} entries` +
+                (total !== state.allRows.length ? ` (filtered from ${state.allRows.length})` : '');
+        }
+
+        renderPagination(tableId);
+    }
+
+    function renderPagination(tableId) {
+        const state = tableState[tableId];
+        const container = document.getElementById(tableId + '-pages');
+        if (!container) return;
+        container.innerHTML = '';
+
+        if (state.pageSize <= 0) return; // Show all mode
+
+        const totalPages = Math.ceil(state.visibleRows.length / state.pageSize) || 1;
+        const current = state.page;
+
+        const addBtn = (label, page, isCurrent) => {
+            const btn = document.createElement('button');
+            btn.className = 'page-btn' + (isCurrent ? ' current' : '');
+            btn.textContent = label;
+            btn.disabled = isCurrent || page < 1 || page > totalPages;
+            btn.onclick = () => { state.page = page; renderTable(tableId); };
+            container.appendChild(btn);
+        };
+
+        addBtn('«', 1, false);
+        addBtn('‹', current - 1, false);
+
+        let startP = Math.max(1, current - 2);
+        let endP = Math.min(totalPages, current + 2);
+        if (endP - startP < 4) { startP = Math.max(1, endP - 4); endP = Math.min(totalPages, startP + 4); }
+
+        for (let i = startP; i <= endP; i++) addBtn(i, i, i === current);
+
+        addBtn('›', current + 1, false);
+        addBtn('»', totalPages, false);
+    }
+
+    function changePageSize(tableId, val) {
+        tableState[tableId].pageSize = parseInt(val);
+        tableState[tableId].page = 1;
+        renderTable(tableId);
+    }
+
+    function updateAllTables() {
+        managedTables.forEach(id => { filterTable(id); });
+    }
+
+    // ══════════════════ COLUMN SORTING ══════════════════
+    function sortColumn(tableId, col) {
+        const state = tableState[tableId];
+        const table = document.getElementById(tableId);
+
+        // Toggle direction
+        if (state.sortCol === col) {
+            state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+            state.sortCol = col; state.sortDir = 'asc';
+        }
+
+        // Update header indicators
+        table.querySelectorAll('th').forEach(th => th.classList.remove('sort-asc','sort-desc'));
+        const th = table.querySelector(`th[data-col="${col}"]`);
+        if (th) th.classList.add('sort-' + state.sortDir);
+
+        // Sort visible rows
+        state.visibleRows.sort((a, b) => {
+            let aVal = a.querySelectorAll('td')[col]?.textContent.trim() || '';
+            let bVal = b.querySelectorAll('td')[col]?.textContent.trim() || '';
+
+            // Try numeric comparison
+            const aNum = parseFloat(aVal.replace(/[^0-9.-]/g,''));
+            const bNum = parseFloat(bVal.replace(/[^0-9.-]/g,''));
+            if (!isNaN(aNum) && !isNaN(bNum)) {
+                return state.sortDir === 'asc' ? aNum - bNum : bNum - aNum;
+            }
+
+            aVal = aVal.toLowerCase(); bVal = bVal.toLowerCase();
+            if (aVal < bVal) return state.sortDir === 'asc' ? -1 : 1;
+            if (aVal > bVal) return state.sortDir === 'asc' ? 1 : -1;
+            return 0;
+        });
+
+        // Re-order DOM
+        const tbody = table.querySelector('tbody');
+        state.visibleRows.forEach(r => tbody.appendChild(r));
+
+        state.page = 1;
+        renderTable(tableId);
+    }
+
+    // ══════════════════ BROWSER FILTER ══════════════════
+    function filterByBrowser(browser, btn) {
+        currentBrowserFilter = browser;
+        document.querySelectorAll('.browser-pill').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        updateAllTables();
+    }
+
+    // ══════════════════ GLOBAL SEARCH ══════════════════
+    function globalSearchHandler(val) {
+        managedTables.forEach(id => {
+            const input = document.querySelector(`.table-search[data-table="${id}"]`);
+            if (input) input.value = val;
+            filterTable(id);
+        });
+    }
+
+    // ══════════════════ DATE FILTER ══════════════════
+    // ══════════════════ CLEAR ALL FILTERS ══════════════════
+    function clearAllFilters(tableId) {
+        // Clear table search
+        const searchInput = document.querySelector(`.table-search[data-table="${tableId}"]`);
+        if (searchInput) searchInput.value = '';
+
+        // Clear column filters
+        document.querySelectorAll(`.col-filter[data-table="${tableId}"]`).forEach(inp => inp.value = '');
+
+        // Clear date filters
+        const section = tableId.replace('-table', '');
+        const from = document.getElementById(section + '-date-from');
+        const to = document.getElementById(section + '-date-to');
+        if (from) from.value = '';
+        if (to) to.value = '';
+
+        // Re-filter and render
+        filterTable(tableId);
+        showToast('Filters cleared');
+    }
+
+    function clearDateFilter(section) {
+        const from = document.getElementById(section + '-date-from');
+        const to = document.getElementById(section + '-date-to');
+        if (from) from.value = '';
+        if (to) to.value = '';
+        filterTable(section + '-table');
+    }
+
+    // ══════════════════ CSV EXPORT ══════════════════
+    function exportCSV(tableId, filename) {
+        const state = tableState[tableId];
+        const table = document.getElementById(tableId);
+        const headers = Array.from(table.querySelectorAll('thead tr:first-child th'))
+            .map(th => '"' + th.textContent.replace(/[⇅]/g,'').trim() + '"');
+
+        let csv = headers.join(',') + '\n';
+        state.visibleRows.forEach(row => {
+            const cells = Array.from(row.querySelectorAll('td'))
+                .map(td => '"' + td.textContent.replace(/"/g, '""').trim() + '"');
+            csv += cells.join(',') + '\n';
+        });
+
+        const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `browserforensics_${filename}_${new Date().toISOString().slice(0,10)}.csv`;
+        link.click();
+        showToast(`Exported ${state.visibleRows.length} rows to CSV`);
+    }
+
+    // ══════════════════ PASSWORD TOGGLE ══════════════════
+    function togglePw(btn) {
+        const cell = btn.closest('.pw-cell');
+        const mask = cell.querySelector('.pw-mask');
+        const text = cell.querySelector('.pw-text');
+        const visible = mask.style.display !== 'none';
+        mask.style.display = visible ? 'none' : '';
+        text.style.display = visible ? '' : 'none';
+        btn.textContent = visible ? '🔒' : '👁️';
+    }
+
+    function toggleAllPasswords() {
+        allPassVisible = !allPassVisible;
+        document.querySelectorAll('#passwords-table .pw-cell').forEach(cell => {
+            cell.querySelector('.pw-mask').style.display = allPassVisible ? 'none' : '';
+            cell.querySelector('.pw-text').style.display = allPassVisible ? '' : 'none';
+            cell.querySelector('.pw-reveal').textContent = allPassVisible ? '🔒' : '👁️';
+        });
+    }
+
+    // ══════════════════ DETAIL MODAL ══════════════════
+    function showDetail(row, type) {
+        const cells = row.querySelectorAll('td');
+        const headers = row.closest('table').querySelectorAll('thead tr:first-child th');
+        const grid = document.getElementById('detailGrid');
+        grid.innerHTML = '';
+
+        headers.forEach((th, i) => {
+            if (!cells[i]) return;
+            const label = document.createElement('div');
+            label.className = 'detail-label';
+            label.textContent = th.textContent.replace(/[⇅]/g,'').trim();
+
+            const value = document.createElement('div');
+            value.className = 'detail-value';
+            // For password cells, show the actual value
+            const pwText = cells[i].querySelector('.pw-text');
+            value.textContent = pwText ? pwText.textContent : cells[i].textContent.trim();
+
+            grid.appendChild(label);
+            grid.appendChild(value);
+        });
+
+        document.getElementById('modalTitle').textContent = type + ' Detail';
+        document.getElementById('detailModal').classList.add('active');
+    }
+
+    function closeModal() { document.getElementById('detailModal').classList.remove('active'); }
+
+    function copyDetailToClipboard() {
+        const grid = document.getElementById('detailGrid');
+        const items = grid.querySelectorAll('.detail-label, .detail-value');
+        let text = '';
+        for (let i = 0; i < items.length; i += 2) {
+            text += items[i].textContent + ': ' + items[i+1].textContent + '\n';
+        }
+        navigator.clipboard.writeText(text).then(() => showToast('Copied to clipboard!'));
+    }
+
+    // ══════════════════ CHART FULLSCREEN ══════════════════
+    function fullscreenChart(canvasId) {
+        const src = document.getElementById(canvasId);
+        if (!src || typeof Chart === 'undefined') return;
+        const srcChart = Chart.getChart(src);
+        if (!srcChart) return;
+
+        document.getElementById('chartModalTitle').textContent = src.closest('.chart-card')?.querySelector('h4')?.textContent || 'Chart';
+        document.getElementById('chartModal').classList.add('active');
+
+        const modalCanvas = document.getElementById('chartModalCanvas');
+        if (fullscreenChartObj) fullscreenChartObj.destroy();
+
+        fullscreenChartObj = new Chart(modalCanvas, {
+            type: srcChart.config.type,
+            data: JSON.parse(JSON.stringify(srcChart.data)),
+            options: { ...srcChart.config.options, maintainAspectRatio: false }
+        });
+    }
+
+    function closeChartModal() {
+        document.getElementById('chartModal').classList.remove('active');
+        if (fullscreenChartObj) { fullscreenChartObj.destroy(); fullscreenChartObj = null; }
+    }
+
+    // ══════════════════ SECTIONS ══════════════════
+    function toggleSection(header) {
+        header.classList.toggle('collapsed');
+        header.nextElementSibling.classList.toggle('collapsed');
+    }
+
+    function expandAllSections() {
+        document.querySelectorAll('.section-header').forEach(h => { h.classList.remove('collapsed'); h.nextElementSibling.classList.remove('collapsed'); });
+    }
+
+    function collapseAllSections() {
+        document.querySelectorAll('.section-header').forEach(h => { h.classList.add('collapsed'); h.nextElementSibling.classList.add('collapsed'); });
+    }
+
+    function scrollToSection(id) {
+        const el = document.getElementById(id);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Expand if collapsed
+        const header = el?.querySelector('.section-header');
+        if (header?.classList.contains('collapsed')) toggleSection(header);
+    }
+
+    // ══════════════════ SIDEBAR ══════════════════
+    function toggleSidebar() {
+        document.getElementById('sidebar').classList.toggle('collapsed');
+    }
+
+    function updateSidebarActive() {
+        const sections = ['summary','passwords','history','cookies','autofill','bookmarks','downloads'];
+        let current = sections[0];
+        sections.forEach(id => {
+            const el = document.getElementById(id);
+            if (el && el.getBoundingClientRect().top < 200) current = id;
+        });
+        document.querySelectorAll('.sidebar-nav a').forEach(a => {
+            a.classList.toggle('active', a.getAttribute('href') === '#' + current);
+        });
+    }
+
+    // ══════════════════ THEME ══════════════════
+    function toggleTheme() {
+        const html = document.documentElement;
+        const newTheme = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        html.setAttribute('data-theme', newTheme);
+        if (typeof Chart !== 'undefined') {
+            Chart.defaults.color = newTheme === 'dark' ? '#e6e6e6' : '#333';
+            Object.values(chartsObj).forEach(c => c.update());
+        }
+    }
+
+    // ══════════════════ TOAST ══════════════════
+    function showToast(msg) {
+        const t = document.getElementById('toast');
+        t.textContent = msg; t.classList.add('show');
+        setTimeout(() => t.classList.remove('show'), 2500);
+    }
+
+    // ══════════════════ KEYBOARD SHORTCUTS ══════════════════
+    document.addEventListener('keydown', e => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+            e.preventDefault();
+            document.getElementById('globalSearch').focus();
+        }
+        if (e.key === 'Escape') {
+            closeModal(); closeChartModal();
+            document.getElementById('globalSearch').blur();
+        }
+    });
+
+    // ══════════════════ CHARTS INIT ══════════════════
+    function initCharts() {
+        if (typeof Chart === 'undefined') return;
+        Chart.defaults.color = '#e6e6e6';
+        Chart.defaults.font.family = "'Segoe UI', system-ui, sans-serif";
+
+        // Summary
+        if (document.getElementById('summaryChart')) {
+            chartsObj.summary = new Chart(document.getElementById('summaryChart'), {
+                type: 'bar', data: chartsData.summary,
+                options: { maintainAspectRatio: false, scales: { y: { beginAtZero: true } },
+                    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 10 } } } }
+            });
+        }
+
+        // Passwords
+        if (document.getElementById('passwordsChart')) {
+            chartsObj.passwords = new Chart(document.getElementById('passwordsChart'), {
+                type: 'doughnut',
+                data: { labels: chartsData.password_stats.labels, datasets: [{ data: chartsData.password_stats.data, backgroundColor: ['#1a73e8','#e94560','#533483'] }] },
+                options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+            });
+        }
+
+        // History Timeline
+        if (document.getElementById('historyTimelineChart')) {
+            chartsObj.historyLine = new Chart(document.getElementById('historyTimelineChart'), {
+                type: 'line',
+                data: { labels: chartsData.history_timeline.labels, datasets: [{ label: 'Page Visits', data: chartsData.history_timeline.data, borderColor: '#00b4d8', backgroundColor: 'rgba(0,180,216,.15)', fill: true, tension: 0.3, pointRadius: 1 }] },
+                options: { maintainAspectRatio: false, scales: { x: { ticks: { maxTicksLimit: 15 } } } }
+            });
+        }
+
+        // Top Domains
+        if (document.getElementById('topDomainsChart')) {
+            chartsObj.topDomains = new Chart(document.getElementById('topDomainsChart'), {
+                type: 'bar',
+                data: { labels: chartsData.top_domains.labels, datasets: [{ label: 'Total Visits', data: chartsData.top_domains.data, backgroundColor: '#e9c46a' }] },
+                options: { indexAxis: 'y', maintainAspectRatio: false }
+            });
+        }
+
+        // Hourly Activity
+        if (document.getElementById('hourlyActivityChart')) {
+            chartsObj.hourly = new Chart(document.getElementById('hourlyActivityChart'), {
+                type: 'bar',
+                data: { labels: chartsData.hourly_activity.labels, datasets: [{ label: 'Visits', data: chartsData.hourly_activity.data, backgroundColor: chartsData.hourly_activity.data.map((_,i) => CHART_COLORS[i % CHART_COLORS.length]) }] },
+                options: { maintainAspectRatio: false, plugins: { legend: { display: false } } }
+            });
+        }
+
+        // Cookies
+        if (document.getElementById('cookiesChart')) {
+            chartsObj.cookies = new Chart(document.getElementById('cookiesChart'), {
+                type: 'doughnut',
+                data: { labels: chartsData.cookie_domains.labels, datasets: [{ data: chartsData.cookie_domains.data, backgroundColor: CHART_COLORS }] },
+                options: { maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 11 } } } } }
+            });
+        }
+
+        // Autofill
+        if (document.getElementById('autofillChart')) {
+            chartsObj.autofill = new Chart(document.getElementById('autofillChart'), {
+                type: 'bar',
+                data: { labels: chartsData.autofill_fields.labels, datasets: [{ label: 'Count', data: chartsData.autofill_fields.data, backgroundColor: '#533483' }] },
+                options: { indexAxis: 'y', maintainAspectRatio: false }
+            });
+        }
+
+        // Downloads
+        if (document.getElementById('downloadsChart')) {
+            chartsObj.downloads = new Chart(document.getElementById('downloadsChart'), {
+                type: 'pie',
+                data: { labels: chartsData.download_types.labels, datasets: [{ data: chartsData.download_types.data, backgroundColor: CHART_COLORS }] },
+                options: { maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 10 } } } }
+            });
+        }
+    }
+    </script>
+</body>
+</html>
