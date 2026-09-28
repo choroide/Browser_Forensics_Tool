@@ -81,8 +81,8 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/browser-forensics.git
-cd browser-forensics
+git clone https://github.com/choroide/Browser_Forensics_Tool.git
+cd Browser_Forensics_Tool
 
 # Install the package
 pip install -e .
